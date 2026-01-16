@@ -5,7 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=www-data
-ExecStart=/usr/bin/python3 /opt/diydydns/server.py --port 8080 --ip-file /var/www/html/myip.txt
+EnvironmentFile=/etc/diydydns/server.conf
+ExecStart=/usr/bin/python3 /opt/diydydns/server.py --port ${PORT} --ip-file ${IP_FILE}
 Restart=on-failure
 RestartSec=10
 

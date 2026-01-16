@@ -45,7 +45,7 @@ sudo chmod +x /opt/diydydns/client.py
 /opt/diydydns/client.py --server user@your-server.com --remote-path /var/www/html/myip.txt --once
 
 # 3. Add to crontab (every 5 minutes)
-echo "*/5 * * * * /usr/bin/python3 /opt/diydydns/client.py --server user@your-server.com --remote-path /var/www/html/myip.txt --once >> /tmp/diydydns.log 2>&1" | crontab -
+(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 /opt/diydydns/client.py --server user@your-server.com --remote-path /var/www/html/myip.txt --once >> /tmp/diydydns.log 2>&1") | crontab -
 
 # 4. Verify it's scheduled
 crontab -l

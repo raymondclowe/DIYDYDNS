@@ -72,34 +72,31 @@ def write_cached_ip(cache_file, ip):
 
 def update_server(ip, server, remote_path, ssh_key=None, strict_host_key_checking=True):
     """Update the public server with the new IP address via SCP."""
-    # Create temporary file with IP using secure method
     try:
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-            temp_file = f.name
+        # Use a temporary file that is automatically deleted
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=True) as f:
             f.write(ip)
-        
-        # Build SCP command
-        cmd = ['scp']
-        if ssh_key:
-            cmd.extend(['-i', ssh_key])
-        if not strict_host_key_checking:
-            cmd.extend(['-o', 'StrictHostKeyChecking=no'])
-        cmd.extend([temp_file, f"{server}:{remote_path}"])
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
-        if result.returncode == 0:
-            print(f"Successfully updated server with IP: {ip}")
-            return True
-        else:
-            print(f"Failed to update server: {result.stderr}", file=sys.stderr)
-            return False
+            f.flush()  # Ensure content is written to disk before scp reads it
+            
+            # Build SCP command
+            cmd = ['scp']
+            if ssh_key:
+                cmd.extend(['-i', ssh_key])
+            if not strict_host_key_checking:
+                cmd.extend(['-o', 'StrictHostKeyChecking=no'])
+            cmd.extend([f.name, f"{server}:{remote_path}"])
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                print(f"Successfully updated server with IP: {ip}")
+                return True
+            else:
+                print(f"Failed to update server: {result.stderr}", file=sys.stderr)
+                return False
     except Exception as e:
         print(f"Error updating server: {e}", file=sys.stderr)
         return False
-    finally:
-        if 'temp_file' in locals() and os.path.exists(temp_file):
-            os.remove(temp_file)
 
 
 def main():

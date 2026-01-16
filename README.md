@@ -8,6 +8,25 @@ This is a DIY Dynamic DNS solution with two parts:
 
 The home lab client periodically checks your public IP address using external services like `ifconfig.me` or `api.ipify.org`. When the IP changes, it securely transfers the new IP to your public server via SCP (SSH). The server component provides a simple HTTP endpoint that you can query from anywhere to get your current home IP address.
 
+## Quick Install
+
+**Easy one-liner installation (recommended):**
+
+```bash
+# Run this on both your home lab and public server
+curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
+```
+
+Or clone and run locally:
+
+```bash
+git clone https://github.com/raymondclowe/DIYDYDNS.git
+cd DIYDYDNS
+./install.sh
+```
+
+The script will auto-detect whether you're on a public server or home network and install the appropriate components.
+
 ## Features
 
 - 🔄 Automatic IP monitoring with configurable intervals
@@ -16,6 +35,7 @@ The home lab client periodically checks your public IP address using external se
 - 📝 Caching to avoid unnecessary updates
 - 🔁 Auto-restart on failure
 - 🐧 Systemd service examples included
+- 🚀 One-line installation script
 
 ## Requirements
 
@@ -41,9 +61,19 @@ scp server.py user@your-server.com:/opt/diydydns/
 # SSH into your server
 ssh user@your-server.com
 
-# Create the IP file directory
+# Create the IP file directory and set permissions
 sudo mkdir -p /var/www/html
+
+# Set up permissions for shared access between SSH user and server
+# Option 1: If running server as current user
 sudo chown $USER:$USER /var/www/html
+
+# Option 2: If running server as www-data (recommended for production)
+# Add your user to www-data group and set group permissions
+sudo usermod -a -G www-data $USER
+sudo chown $USER:www-data /var/www/html
+sudo chmod 775 /var/www/html
+# Note: You may need to log out and back in for group changes to take effect
 
 # Start the server (for testing)
 python3 /opt/diydydns/server.py --port 8080 --ip-file /var/www/html/myip.txt
@@ -112,8 +142,12 @@ Options:
 # Copy service file
 sudo cp systemd/diydydns-client@.service /etc/systemd/system/
 
-# Edit the service file to set your server details
-sudo nano /etc/systemd/system/diydydns-client@.service
+# Create config directory and copy config file
+sudo mkdir -p /etc/diydydns
+sudo cp systemd/client.conf.example /etc/diydydns/client.conf
+
+# Edit the configuration file with your server details
+sudo nano /etc/diydydns/client.conf
 
 # Enable and start the service
 sudo systemctl enable diydydns-client@$USER.service
@@ -129,8 +163,12 @@ sudo systemctl status diydydns-client@$USER.service
 # Copy service file
 sudo cp systemd/diydydns-server.service /etc/systemd/system/
 
-# Edit if needed
-sudo nano /etc/systemd/system/diydydns-server.service
+# Create config directory and copy config file
+sudo mkdir -p /etc/diydydns
+sudo cp systemd/server.conf.example /etc/diydydns/server.conf
+
+# Edit the configuration file if needed
+sudo nano /etc/diydydns/server.conf
 
 # Enable and start the service
 sudo systemctl enable diydydns-server.service
@@ -176,8 +214,15 @@ Then you only need to run the client, and query: `curl http://your-domain.com/ip
 ### Server Issues
 
 **"Permission denied"**
-- Ensure the IP file path is writable
+- Ensure the IP file path is writable by both the SSH user and the server process
 - Check directory permissions: `ls -la /var/www/html/`
+- If running server as www-data, ensure proper group permissions:
+  ```bash
+  sudo usermod -a -G www-data your-ssh-user
+  sudo chown your-ssh-user:www-data /var/www/html
+  sudo chmod 775 /var/www/html
+  # Log out and back in for group changes to take effect
+  ```
 - Use a port > 1024 or run as root (not recommended)
 
 **Can't connect to server**
