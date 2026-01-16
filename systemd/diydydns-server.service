@@ -1,0 +1,14 @@
+[Unit]
+Description=DIY Dynamic DNS Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+EnvironmentFile=/etc/diydydns/server.conf
+ExecStart=/usr/bin/python3 /opt/diydydns/server.py --port ${PORT} --ip-file ${IP_FILE}
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
