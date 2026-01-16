@@ -1,0 +1,17 @@
+# DIY Dynamic DNS - Client Configuration Example
+# Copy this file and customize it for your setup
+
+# Server connection (user@hostname or user@ip)
+SERVER=user@your-server.com
+
+# Path on the server where the IP file will be stored
+REMOTE_PATH=/var/www/html/myip.txt
+
+# Check interval in seconds (default: 300 = 5 minutes)
+INTERVAL=300
+
+# Local cache file location
+CACHE_FILE=~/.diydydns/cached_ip.txt
+
+# SSH key for authentication (optional, if not using ssh-agent)
+SSH_KEY=~/.ssh/id_rsa

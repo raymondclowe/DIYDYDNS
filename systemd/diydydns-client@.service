@@ -1,0 +1,14 @@
+[Unit]
+Description=DIY Dynamic DNS Client
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+ExecStart=/usr/bin/python3 /opt/diydydns/client.py --server user@your-server.com --remote-path /var/www/html/myip.txt --interval 300
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

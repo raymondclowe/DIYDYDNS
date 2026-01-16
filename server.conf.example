@@ -1,0 +1,11 @@
+# DIY Dynamic DNS - Server Configuration Example
+# Copy this file and customize it for your setup
+
+# Port to listen on
+PORT=8080
+
+# Path to the IP file (must be writable by both SSH user and server process)
+IP_FILE=/var/www/html/myip.txt
+
+# Address to bind to (0.0.0.0 for all interfaces)
+BIND_ADDRESS=0.0.0.0
