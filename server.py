@@ -11,7 +11,7 @@ import socketserver
 import argparse
 import os
 import sys
-from pathlib import Path
+import ipaddress
 
 
 class IPAddressHandler(http.server.SimpleHTTPRequestHandler):
@@ -35,8 +35,18 @@ class IPAddressHandler(http.server.SimpleHTTPRequestHandler):
                 with open(self.ip_file, 'r') as f:
                     ip = f.read().strip()
                 
+                # Validate IP address before serving
+                try:
+                    ipaddress.IPv4Address(ip)
+                except ipaddress.AddressValueError:
+                    print(f"Invalid IP address in file: {ip}", file=sys.stderr)
+                    self.send_error(500, "Invalid IP address format")
+                    return
+                
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/plain')
+                # Note: Using wildcard CORS for public DNS service access
+                # If you need to restrict this, configure the allowed origins
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(ip.encode())

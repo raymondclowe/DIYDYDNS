@@ -47,7 +47,7 @@ REMOTE_PATH=${REMOTE_PATH:-/var/www/html/myip.txt}
 
 # Test write permissions
 echo "Testing write permissions on remote server..."
-if ssh "$SERVER" "mkdir -p $(dirname $REMOTE_PATH) && touch $REMOTE_PATH" 2>/dev/null; then
+if ssh "$SERVER" "mkdir -p \"\$(dirname \"$REMOTE_PATH\")\" && touch \"$REMOTE_PATH\"" 2>/dev/null; then
     echo "✓ Write permissions OK"
 else
     echo "✗ Cannot write to $REMOTE_PATH on remote server"

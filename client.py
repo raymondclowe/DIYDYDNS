@@ -11,7 +11,8 @@ import sys
 import time
 import os
 import argparse
-from pathlib import Path
+import ipaddress
+import tempfile
 
 
 def get_public_ip():
@@ -32,10 +33,13 @@ def get_public_ip():
                 timeout=10
             )
             if result.returncode == 0 and result.stdout.strip():
-                ip = result.stdout.strip()
-                # Basic validation
-                if ip and '.' in ip and len(ip.split('.')) == 4:
-                    return ip
+                ip_str = result.stdout.strip()
+                # Validate IPv4 address
+                try:
+                    ipaddress.IPv4Address(ip_str)
+                    return ip_str
+                except ipaddress.AddressValueError:
+                    continue
         except Exception as e:
             print(f"Failed to get IP from {service}: {e}", file=sys.stderr)
             continue
@@ -66,19 +70,21 @@ def write_cached_ip(cache_file, ip):
         return False
 
 
-def update_server(ip, server, remote_path, ssh_key=None):
+def update_server(ip, server, remote_path, ssh_key=None, strict_host_key_checking=True):
     """Update the public server with the new IP address via SCP."""
-    # Create temporary file with IP
-    temp_file = '/tmp/current_ip.txt'
+    # Create temporary file with IP using secure method
     try:
-        with open(temp_file, 'w') as f:
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+            temp_file = f.name
             f.write(ip)
         
         # Build SCP command
         cmd = ['scp']
         if ssh_key:
             cmd.extend(['-i', ssh_key])
-        cmd.extend(['-o', 'StrictHostKeyChecking=no', temp_file, f"{server}:{remote_path}"])
+        if not strict_host_key_checking:
+            cmd.extend(['-o', 'StrictHostKeyChecking=no'])
+        cmd.extend([temp_file, f"{server}:{remote_path}"])
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         
@@ -92,7 +98,7 @@ def update_server(ip, server, remote_path, ssh_key=None):
         print(f"Error updating server: {e}", file=sys.stderr)
         return False
     finally:
-        if os.path.exists(temp_file):
+        if 'temp_file' in locals() and os.path.exists(temp_file):
             os.remove(temp_file)
 
 
@@ -126,6 +132,11 @@ def main():
         help='Path to SSH private key for authentication'
     )
     parser.add_argument(
+        '--disable-host-key-check',
+        action='store_true',
+        help='Disable SSH host key checking (NOT RECOMMENDED for security)'
+    )
+    parser.add_argument(
         '--once',
         action='store_true',
         help='Run once and exit (default: run continuously)'
@@ -151,7 +162,8 @@ def main():
                 
                 if current_ip != cached_ip:
                     print(f"IP changed from {cached_ip} to {current_ip}")
-                    if update_server(current_ip, args.server, args.remote_path, args.ssh_key):
+                    if update_server(current_ip, args.server, args.remote_path, args.ssh_key, 
+                                   not args.disable_host_key_check):
                         write_cached_ip(args.cache_file, current_ip)
                     else:
                         print("Failed to update server", file=sys.stderr)
