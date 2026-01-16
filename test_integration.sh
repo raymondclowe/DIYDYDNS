@@ -11,7 +11,22 @@ echo
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEST_DIR="/tmp/diydydns_test_$$"
 TEST_IP="203.0.113.42"
-TEST_PORT=$((10000 + RANDOM % 10000))
+
+# Function to find an available port
+find_available_port() {
+    local port
+    for i in {1..10}; do
+        port=$((10000 + RANDOM % 10000))
+        if ! netstat -tln 2>/dev/null | grep -q ":$port " && ! ss -tln 2>/dev/null | grep -q ":$port "; then
+            echo "$port"
+            return 0
+        fi
+    done
+    # Fallback to random port if checks unavailable
+    echo $((10000 + RANDOM % 10000))
+}
+
+TEST_PORT=$(find_available_port)
 
 # Cleanup function
 cleanup() {
@@ -112,7 +127,7 @@ sleep 2
 rm -f "$TEST_DIR/myip.txt"
 
 # Start server again
-TEST_PORT2=$((10000 + RANDOM % 10000))
+TEST_PORT2=$(find_available_port)
 python3 "$SCRIPT_DIR/server.py" --port "$TEST_PORT2" --ip-file "$TEST_DIR/myip.txt" &
 SERVER_PID=$!
 sleep 2

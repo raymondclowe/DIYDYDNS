@@ -47,7 +47,9 @@ REMOTE_PATH=${REMOTE_PATH:-/var/www/html/myip.txt}
 
 # Test write permissions
 echo "Testing write permissions on remote server..."
-if ssh "$SERVER" "mkdir -p \"\$(dirname \"$REMOTE_PATH\")\" && touch \"$REMOTE_PATH\"" 2>/dev/null; then
+# Escape the remote path for safe shell execution
+ESCAPED_REMOTE_PATH=$(printf '%q' "$REMOTE_PATH")
+if ssh "$SERVER" "mkdir -p \"\$(dirname $ESCAPED_REMOTE_PATH)\" && touch $ESCAPED_REMOTE_PATH" 2>/dev/null; then
     echo "✓ Write permissions OK"
 else
     echo "✗ Cannot write to $REMOTE_PATH on remote server"
@@ -80,6 +82,6 @@ echo
 echo "Setup complete!"
 echo
 echo "To start monitoring continuously, run:"
-echo "  python3 $SCRIPT_DIR/client.py --server $SERVER --remote-path $REMOTE_PATH --interval $INTERVAL"
+echo "  python3 \"$SCRIPT_DIR/client.py\" --server \"$SERVER\" --remote-path \"$REMOTE_PATH\" --interval \"$INTERVAL\""
 echo
 echo "Or install as a systemd service for automatic startup."
