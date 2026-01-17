@@ -206,11 +206,11 @@ detect_environment() {
             # If we can reach the internet and the public IP differs from local IP,
             # this is likely a cloud server
             if [ "$PUBLIC_IP" != "$LOCAL_IP" ]; then
-                # Check if we can listen on privileged ports (a server characteristic)
-                # or if common cloud metadata services are accessible
+                # Check if common cloud metadata services are accessible
+                # Try AWS first (most common), then Azure (same IP), then GCP
                 if curl -s --max-time 2 http://169.254.169.254/latest/meta-data/ &>/dev/null || \
-                   curl -s --max-time 2 -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/ &>/dev/null || \
-                   curl -s --max-time 2 -H "Metadata: true" http://169.254.169.254/metadata/instance?api-version=2021-02-01 &>/dev/null; then
+                   curl -s --max-time 2 -H "Metadata: true" http://169.254.169.254/metadata/instance?api-version=2021-12-13 &>/dev/null || \
+                   curl -s --max-time 2 -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/ &>/dev/null; then
                     echo "  → Cloud instance detected (AWS/GCP/Azure/Oracle)"
                     AUTO_DETECTED="server"
                 else
