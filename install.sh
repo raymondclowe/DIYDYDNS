@@ -277,12 +277,11 @@ is_port_in_use() {
     return 1
 }
 
-# Suggest an available port (skipping a known unavailable port)
+# Suggest an available port
 suggest_available_port() {
-    local skip_port=$1
     local suggested_ports=(8081 8082 3000 3001 5000 5001)
     
-    # Try common ports (excluding the skip_port if provided)
+    # Try common ports
     for port in "${suggested_ports[@]}"; do
         if ! is_port_in_use "$port"; then
             echo "$port"
@@ -315,7 +314,7 @@ install_server() {
     DEFAULT_PORT=8080
     if is_port_in_use "$DEFAULT_PORT"; then
         # Default port is in use, suggest an alternative
-        SUGGESTED_PORT=$(suggest_available_port "$DEFAULT_PORT")
+        SUGGESTED_PORT=$(suggest_available_port)
         echo "⚠ Port $DEFAULT_PORT is already in use"
         echo "  Suggested alternative: $SUGGESTED_PORT"
         read -p "Enter port to listen on [$SUGGESTED_PORT]: " PORT
