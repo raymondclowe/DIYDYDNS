@@ -46,12 +46,12 @@ curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.
 **For non-interactive server installation:**
 
 ```bash
-# Server installation with defaults
+# Server installation with defaults (auto-detects as server on cloud instances)
 curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
 
 # Optional: customize port and IP file location
-DIYDYDNS_PORT=8080 \
-DIYDYDNS_IP_FILE=/var/www/html/myip.txt \
+export DIYDYDNS_PORT=8080
+export DIYDYDNS_IP_FILE=/var/www/html/myip.txt
 curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
 ```
 
@@ -65,7 +65,7 @@ The installer automatically detects cloud instances by checking for cloud metada
 
 If the auto-detection fails, you can force server installation in non-interactive mode by setting `DIYDYDNS_FORCE_TYPE`:
 ```bash
-DIYDYDNS_FORCE_TYPE=server curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
+export DIYDYDNS_FORCE_TYPE=server && curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
 ```
 
 **Note:** The installer will detect if components are already installed and skip reinstallation in non-interactive mode.
