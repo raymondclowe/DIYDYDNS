@@ -37,6 +37,31 @@ check_requirements() {
     echo
 }
 
+# Check if an IP address is private
+is_private_ip() {
+    local ip=$1
+    
+    # Check for private IP ranges
+    # 10.0.0.0/8
+    if [[ $ip =~ ^10\. ]]; then
+        return 0
+    fi
+    # 172.16.0.0/12
+    if [[ $ip =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]; then
+        return 0
+    fi
+    # 192.168.0.0/16
+    if [[ $ip =~ ^192\.168\. ]]; then
+        return 0
+    fi
+    # 127.0.0.0/8 (localhost)
+    if [[ $ip =~ ^127\. ]]; then
+        return 0
+    fi
+    
+    return 1
+}
+
 # Detect if we're on a public server or home network
 detect_environment() {
     echo "Detecting environment..."
@@ -52,27 +77,74 @@ detect_environment() {
     
     echo "✓ Public IP detected: $PUBLIC_IP"
     
-    # Check if we can accept incoming connections (likely a server)
-    # For now, we'll ask the user
-    echo
-    echo "Is this machine publicly accessible from the internet?"
-    echo "  (Choose 'server' if this has a static IP or is in a datacenter)"
-    echo "  (Choose 'client' if this is behind a router/NAT at home)"
-    echo
-    read -p "Install as [server/client]? " INSTALL_TYPE
+    # Get local IP address
+    LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7; exit}' || echo "")
     
-    case "$INSTALL_TYPE" in
-        server|SERVER|s|S)
-            INSTALL_TYPE="server"
-            ;;
-        client|CLIENT|c|C)
-            INSTALL_TYPE="client"
-            ;;
-        *)
-            echo "Invalid choice. Please run again and choose 'server' or 'client'"
-            exit 1
-            ;;
-    esac
+    # Get default gateway
+    GATEWAY=$(ip route 2>/dev/null | grep default | awk '{print $3; exit}' || echo "")
+    
+    # Auto-detect based on network configuration
+    AUTO_DETECTED=""
+    
+    if [ -n "$LOCAL_IP" ]; then
+        echo "  Local IP: $LOCAL_IP"
+        if is_private_ip "$LOCAL_IP"; then
+            echo "  → Local IP is private (behind NAT/router)"
+            AUTO_DETECTED="client"
+        else
+            echo "  → Local IP is public (directly connected to internet)"
+            AUTO_DETECTED="server"
+        fi
+    fi
+    
+    if [ -n "$GATEWAY" ]; then
+        echo "  Gateway: $GATEWAY"
+        if is_private_ip "$GATEWAY"; then
+            echo "  → Gateway is private (typical home/office network)"
+            AUTO_DETECTED="client"
+        fi
+    fi
+    
+    echo
+    
+    # If auto-detected, use that with confirmation
+    if [ -n "$AUTO_DETECTED" ]; then
+        echo "Auto-detected: This appears to be a $AUTO_DETECTED machine"
+        if [ "$AUTO_DETECTED" = "server" ]; then
+            echo "  (Public IP, suitable for hosting the server component)"
+        else
+            echo "  (Private network, suitable for running the client component)"
+        fi
+        echo
+        read -p "Is this correct? [Y/n] " CONFIRM
+        if [[ ! "$CONFIRM" =~ ^[Nn]$ ]]; then
+            INSTALL_TYPE="$AUTO_DETECTED"
+        else
+            AUTO_DETECTED=""
+        fi
+    fi
+    
+    # Fall back to manual selection if needed
+    if [ -z "$AUTO_DETECTED" ]; then
+        echo "Unable to auto-detect environment. Please choose manually:"
+        echo "  (Choose 'server' if this has a static IP or is in a datacenter)"
+        echo "  (Choose 'client' if this is behind a router/NAT at home)"
+        echo
+        read -p "Install as [server/client]? " INSTALL_TYPE
+        
+        case "$INSTALL_TYPE" in
+            server|SERVER|s|S)
+                INSTALL_TYPE="server"
+                ;;
+            client|CLIENT|c|C)
+                INSTALL_TYPE="client"
+                ;;
+            *)
+                echo "Invalid choice. Please run again and choose 'server' or 'client'"
+                exit 1
+                ;;
+        esac
+    fi
     
     echo
     echo "Installing as: $INSTALL_TYPE"
@@ -158,6 +230,61 @@ EOF
     echo "Your home lab will now update the server when your IP changes."
 }
 
+# Detect installed reverse proxies
+detect_reverse_proxies() {
+    local proxies=()
+    
+    if command -v nginx &> /dev/null; then
+        proxies+=("nginx")
+    fi
+    
+    if command -v apache2 &> /dev/null || command -v httpd &> /dev/null; then
+        proxies+=("apache")
+    fi
+    
+    if command -v caddy &> /dev/null; then
+        proxies+=("caddy")
+    fi
+    
+    echo "${proxies[@]}"
+}
+
+# Check if a port is in use
+is_port_in_use() {
+    local port=$1
+    
+    # Check with netstat or ss
+    if command -v netstat &> /dev/null; then
+        if netstat -tln 2>/dev/null | grep -q ":$port "; then
+            return 0
+        fi
+    fi
+    
+    if command -v ss &> /dev/null; then
+        if ss -tln 2>/dev/null | grep -q ":$port "; then
+            return 0
+        fi
+    fi
+    
+    return 1
+}
+
+# Suggest an available port
+suggest_available_port() {
+    local default_port=$1
+    local suggested_ports=("$default_port" 8080 8081 8082 3000 3001 5000 5001)
+    
+    for port in "${suggested_ports[@]}"; do
+        if ! is_port_in_use "$port"; then
+            echo "$port"
+            return 0
+        fi
+    done
+    
+    # If all common ports are taken, suggest a random high port
+    echo $((10000 + RANDOM % 10000))
+}
+
 # Install server
 install_server() {
     echo "=================================================="
@@ -165,8 +292,38 @@ install_server() {
     echo "=================================================="
     echo
     
-    read -p "Enter port to listen on [8080]: " PORT
-    PORT=${PORT:-8080}
+    # Detect reverse proxies
+    PROXIES=($(detect_reverse_proxies))
+    
+    if [ ${#PROXIES[@]} -gt 0 ]; then
+        echo "Detected reverse proxy: ${PROXIES[@]}"
+        echo "You can use your reverse proxy to serve the IP file instead of running"
+        echo "the Python server. Configuration examples will be shown at the end."
+        echo
+    fi
+    
+    # Suggest an available port
+    DEFAULT_PORT=8080
+    if is_port_in_use "$DEFAULT_PORT"; then
+        SUGGESTED_PORT=$(suggest_available_port "$DEFAULT_PORT")
+        echo "⚠ Port $DEFAULT_PORT is already in use"
+        echo "  Suggested alternative: $SUGGESTED_PORT"
+        read -p "Enter port to listen on [$SUGGESTED_PORT]: " PORT
+        PORT=${PORT:-$SUGGESTED_PORT}
+    else
+        read -p "Enter port to listen on [$DEFAULT_PORT]: " PORT
+        PORT=${PORT:-$DEFAULT_PORT}
+    fi
+    
+    # Warn if chosen port is in use
+    if is_port_in_use "$PORT"; then
+        echo "⚠ Warning: Port $PORT appears to be in use"
+        read -p "Continue anyway? [y/N] " CONTINUE
+        if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
+            echo "Installation cancelled"
+            exit 1
+        fi
+    fi
     
     read -p "Enter path for IP file [/var/www/html/myip.txt]: " IP_FILE
     IP_FILE=${IP_FILE:-/var/www/html/myip.txt}
@@ -232,11 +389,103 @@ EOF
         echo "  sudo ufw allow $PORT"
     fi
     
+    # Show reverse proxy configurations if detected
+    if [ ${#PROXIES[@]} -gt 0 ]; then
+        echo
+        echo "=================================================="
+        echo "Reverse Proxy Configuration Examples"
+        echo "=================================================="
+        echo
+        echo "You can use your reverse proxy to serve the IP file instead of"
+        echo "running the Python server on port $PORT."
+        echo
+        
+        for proxy in "${PROXIES[@]}"; do
+            case "$proxy" in
+                nginx)
+                    echo "─────────────────────────────────────────────────"
+                    echo "Nginx Configuration:"
+                    echo "─────────────────────────────────────────────────"
+                    echo "Add this to your Nginx configuration:"
+                    echo
+                    cat << 'EOF'
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    location /ip {
+        alias /var/www/html/myip.txt;
+        default_type text/plain;
+        add_header Access-Control-Allow-Origin *;
+    }
+}
+EOF
+                    echo
+                    echo "Then reload: sudo systemctl reload nginx"
+                    echo
+                    ;;
+                apache)
+                    echo "─────────────────────────────────────────────────"
+                    echo "Apache Configuration:"
+                    echo "─────────────────────────────────────────────────"
+                    echo "Add this to your Apache configuration:"
+                    echo
+                    cat << 'EOF'
+<VirtualHost *:80>
+    ServerName your-domain.com
+    
+    Alias /ip /var/www/html/myip.txt
+    
+    <Location /ip>
+        ForceType text/plain
+        Header set Access-Control-Allow-Origin "*"
+    </Location>
+</VirtualHost>
+EOF
+                    echo
+                    echo "Enable required modules and reload:"
+                    echo "  sudo a2enmod headers"
+                    echo "  sudo systemctl reload apache2"
+                    echo
+                    ;;
+                caddy)
+                    echo "─────────────────────────────────────────────────"
+                    echo "Caddy Configuration:"
+                    echo "─────────────────────────────────────────────────"
+                    echo "Add this to your Caddyfile:"
+                    echo
+                    cat << 'EOF'
+your-domain.com {
+    route /ip {
+        header Access-Control-Allow-Origin *
+        rewrite * /myip.txt
+        file_server {
+            root /var/www/html
+        }
+    }
+}
+EOF
+                    echo
+                    echo "Then reload: sudo systemctl reload caddy"
+                    echo
+                    ;;
+            esac
+        done
+        
+        echo "Note: If using a reverse proxy, you can skip starting the Python"
+        echo "      server service and use only the client component."
+    fi
+    
     echo
     echo "=================================================="
     echo "Server installation complete!"
     echo "=================================================="
-    echo "Access your IP at: http://$(curl -s ifconfig.me):$PORT/ip"
+    if [ ${#PROXIES[@]} -eq 0 ]; then
+        echo "Access your IP at: http://$(curl -s ifconfig.me):$PORT/ip"
+    else
+        echo "Configure your reverse proxy (see above) or access via Python server:"
+        echo "  http://$(curl -s ifconfig.me):$PORT/ip"
+    fi
     echo
     echo "Next, install the client on your home lab machine."
 }
