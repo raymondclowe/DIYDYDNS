@@ -245,8 +245,10 @@ detect_environment() {
     
     # Check if type is forced via environment variable
     if [ -n "${DIYDYDNS_FORCE_TYPE:-}" ]; then
-        # Trim whitespace from the variable to handle user input errors
-        DIYDYDNS_FORCE_TYPE=$(echo "${DIYDYDNS_FORCE_TYPE}" | xargs)
+        # Trim leading and trailing whitespace to handle user input errors
+        # Using shell parameter expansion for safety
+        DIYDYDNS_FORCE_TYPE="${DIYDYDNS_FORCE_TYPE#"${DIYDYDNS_FORCE_TYPE%%[![:space:]]*}"}"
+        DIYDYDNS_FORCE_TYPE="${DIYDYDNS_FORCE_TYPE%"${DIYDYDNS_FORCE_TYPE##*[![:space:]]}"}"
         case "${DIYDYDNS_FORCE_TYPE}" in
             server|SERVER)
                 INSTALL_TYPE="server"
