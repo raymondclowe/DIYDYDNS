@@ -41,6 +41,7 @@ download_repository() {
     TEMP_DIR=$(mktemp -d)
     if ! cd "$TEMP_DIR"; then
         echo "✗ Failed to change to temporary directory"
+        cd /
         rm -rf "$TEMP_DIR"
         exit 1
     fi
