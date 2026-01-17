@@ -246,7 +246,9 @@ detect_environment() {
     # Check if type is forced via environment variable
     if [ -n "${DIYDYDNS_FORCE_TYPE:-}" ]; then
         # Trim leading and trailing whitespace to handle user input errors
-        # Using shell parameter expansion for safety
+        # This uses shell parameter expansion to safely remove whitespace:
+        # - First line removes leading whitespace (from the left)
+        # - Second line removes trailing whitespace (from the right)
         DIYDYDNS_FORCE_TYPE="${DIYDYDNS_FORCE_TYPE#"${DIYDYDNS_FORCE_TYPE%%[![:space:]]*}"}"
         DIYDYDNS_FORCE_TYPE="${DIYDYDNS_FORCE_TYPE%"${DIYDYDNS_FORCE_TYPE##*[![:space:]]}"}"
         case "${DIYDYDNS_FORCE_TYPE}" in
