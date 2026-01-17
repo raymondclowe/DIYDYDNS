@@ -102,7 +102,8 @@ detect_environment() {
         if is_private_ip "$GATEWAY"; then
             echo "  → Gateway is private (typical home/office network)"
             # Only override to client if not already set to server with public IP
-            # This handles the case where a public cloud instance might have a private gateway
+            # This handles cloud instances (AWS VPC, GCP, Azure) where the machine has
+            # a public IP but uses a private gateway for routing within the VPC
             if [ "$AUTO_DETECTED" != "server" ]; then
                 AUTO_DETECTED="client"
             fi
