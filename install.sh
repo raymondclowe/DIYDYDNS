@@ -16,6 +16,46 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
+# Check if running interactively
+if [ -t 0 ]; then
+    INTERACTIVE=true
+else
+    INTERACTIVE=false
+    echo "Running in non-interactive mode (piped from curl)"
+    echo
+fi
+
+# Download repository files if needed (for curl | bash installation)
+download_repository() {
+    # Check if required files exist in current directory
+    if [ -f "client.py" ] && [ -f "server.py" ] && [ -d "systemd" ]; then
+        # Files already exist, likely running from cloned repo
+        echo "✓ Repository files found in current directory"
+        return 0
+    fi
+    
+    # Need to download the repository
+    echo "Downloading DIYDYDNS repository files..."
+    
+    # Create temporary directory
+    TEMP_DIR=$(mktemp -d)
+    cd "$TEMP_DIR"
+    
+    # Download and extract the repository
+    if ! curl -fsSL https://github.com/raymondclowe/DIYDYDNS/archive/main.tar.gz | tar xz; then
+        echo "✗ Failed to download repository files"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+    
+    # Move into extracted directory
+    cd DIYDYDNS-main
+    echo "✓ Repository files downloaded"
+    
+    # Set flag that we downloaded files
+    DOWNLOADED_REPO=true
+}
+
 # Check for required tools
 check_requirements() {
     echo "Checking requirements..."
@@ -35,6 +75,61 @@ check_requirements() {
     echo "✓ curl found"
     
     echo
+}
+
+# Check if client or server is already installed
+check_existing_installation() {
+    local component=$1
+    
+    if [ "$component" = "client" ]; then
+        if [ -f "/opt/diydydns/client.py" ] && [ -f "/etc/diydydns/client.conf" ]; then
+            echo "⚠ Client is already installed"
+            echo "  Script: /opt/diydydns/client.py"
+            echo "  Config: /etc/diydydns/client.conf"
+            
+            if command -v systemctl &> /dev/null; then
+                if systemctl is-enabled diydydns-client@*.service &>/dev/null 2>&1; then
+                    echo "  Service: Active"
+                fi
+            fi
+            
+            echo
+            if [ "$INTERACTIVE" = true ]; then
+                read -p "Reinstall? This will overwrite existing configuration. [y/N] " REINSTALL
+                if [[ ! "$REINSTALL" =~ ^[Yy]$ ]]; then
+                    echo "Installation cancelled. Existing installation kept."
+                    exit 0
+                fi
+            else
+                echo "Skipping installation. Already installed."
+                exit 0
+            fi
+        fi
+    elif [ "$component" = "server" ]; then
+        if [ -f "/opt/diydydns/server.py" ] && [ -f "/etc/diydydns/server.conf" ]; then
+            echo "⚠ Server is already installed"
+            echo "  Script: /opt/diydydns/server.py"
+            echo "  Config: /etc/diydydns/server.conf"
+            
+            if command -v systemctl &> /dev/null; then
+                if systemctl is-enabled diydydns-server.service &>/dev/null 2>&1; then
+                    echo "  Service: Active"
+                fi
+            fi
+            
+            echo
+            if [ "$INTERACTIVE" = true ]; then
+                read -p "Reinstall? This will overwrite existing configuration. [y/N] " REINSTALL
+                if [[ ! "$REINSTALL" =~ ^[Yy]$ ]]; then
+                    echo "Installation cancelled. Existing installation kept."
+                    exit 0
+                fi
+            else
+                echo "Skipping installation. Already installed."
+                exit 0
+            fi
+        fi
+    fi
 }
 
 # Check if an IP address is private
@@ -112,7 +207,7 @@ detect_environment() {
     
     echo
     
-    # If auto-detected, use that with confirmation
+    # If auto-detected, use that with confirmation (or auto-proceed if non-interactive)
     if [ -n "$AUTO_DETECTED" ]; then
         echo "Auto-detected: This appears to be a $AUTO_DETECTED machine"
         if [ "$AUTO_DETECTED" = "server" ]; then
@@ -121,17 +216,32 @@ detect_environment() {
             echo "  (Private network, suitable for running the client component)"
         fi
         echo
-        read -p "Is this correct? [Y/n] " CONFIRM
-        if [[ ! "$CONFIRM" =~ ^[Nn]$ ]]; then
+        
+        if [ "$INTERACTIVE" = true ]; then
+            read -p "Is this correct? [Y/n] " CONFIRM
+            if [[ ! "$CONFIRM" =~ ^[Nn]$ ]]; then
+                INSTALL_TYPE="$AUTO_DETECTED"
+                echo
+                echo "Installing as: $INSTALL_TYPE"
+                echo
+                return
+            fi
+        else
+            # Non-interactive mode: proceed with auto-detection
             INSTALL_TYPE="$AUTO_DETECTED"
-            echo
-            echo "Installing as: $INSTALL_TYPE"
+            echo "Proceeding with auto-detected type: $INSTALL_TYPE"
             echo
             return
         fi
     fi
     
     # Manual selection (either no auto-detection or user rejected)
+    if [ "$INTERACTIVE" = false ]; then
+        echo "Error: Cannot proceed in non-interactive mode without auto-detection"
+        echo "Please run the script locally with ./install.sh for manual selection"
+        exit 1
+    fi
+    
     if [ -n "$AUTO_DETECTED" ]; then
         echo "Please choose manually:"
     else
@@ -167,32 +277,66 @@ install_client() {
     echo "=================================================="
     echo
     
+    # Check if already installed
+    check_existing_installation "client"
+    
     # Get server details
-    read -p "Enter your public server address (user@server.com): " SERVER
-    if [ -z "$SERVER" ]; then
-        echo "Error: Server address is required"
-        exit 1
+    if [ "$INTERACTIVE" = true ]; then
+        read -p "Enter your public server address (user@server.com): " SERVER
+        if [ -z "$SERVER" ]; then
+            echo "Error: Server address is required"
+            exit 1
+        fi
+        
+        read -p "Enter remote path for IP file [/var/www/html/myip.txt]: " REMOTE_PATH
+        REMOTE_PATH=${REMOTE_PATH:-/var/www/html/myip.txt}
+        
+        read -p "Enter check interval in seconds [300]: " INTERVAL
+        INTERVAL=${INTERVAL:-300}
+    else
+        # Non-interactive mode: use defaults or environment variables
+        SERVER="${DIYDYDNS_SERVER:-}"
+        REMOTE_PATH="${DIYDYDNS_REMOTE_PATH:-/var/www/html/myip.txt}"
+        INTERVAL="${DIYDYDNS_INTERVAL:-300}"
+        
+        if [ -z "$SERVER" ]; then
+            echo "Error: Server address is required for non-interactive installation"
+            echo "Please set DIYDYDNS_SERVER environment variable or run interactively"
+            echo
+            echo "Example:"
+            echo "  DIYDYDNS_SERVER=user@server.com curl -fsSL ... | bash"
+            echo
+            echo "Or run locally for interactive setup:"
+            echo "  git clone https://github.com/raymondclowe/DIYDYDNS.git"
+            echo "  cd DIYDYDNS"
+            echo "  ./install.sh"
+            exit 1
+        fi
+        
+        echo "Using configuration:"
+        echo "  Server: $SERVER"
+        echo "  Remote path: $REMOTE_PATH"
+        echo "  Interval: $INTERVAL seconds"
+        echo
     fi
     
-    read -p "Enter remote path for IP file [/var/www/html/myip.txt]: " REMOTE_PATH
-    REMOTE_PATH=${REMOTE_PATH:-/var/www/html/myip.txt}
-    
-    read -p "Enter check interval in seconds [300]: " INTERVAL
-    INTERVAL=${INTERVAL:-300}
-    
     # Test SSH connection
-    echo
-    echo "Testing SSH connection to $SERVER..."
-    if ssh -o BatchMode=yes -o ConnectTimeout=5 "$SERVER" "echo 'SSH OK'" 2>/dev/null; then
-        echo "✓ SSH connection successful"
+    if [ "$INTERACTIVE" = true ]; then
+        echo "Testing SSH connection to $SERVER..."
+        if ssh -o BatchMode=yes -o ConnectTimeout=5 "$SERVER" "echo 'SSH OK'" 2>/dev/null; then
+            echo "✓ SSH connection successful"
+        else
+            echo "✗ SSH connection failed"
+            echo
+            echo "Please set up SSH key authentication:"
+            echo "  ssh-keygen -t rsa -b 4096"
+            echo "  ssh-copy-id $SERVER"
+            echo
+            read -p "Press Enter to continue anyway, or Ctrl+C to exit..."
+        fi
     else
-        echo "✗ SSH connection failed"
-        echo
-        echo "Please set up SSH key authentication:"
-        echo "  ssh-keygen -t rsa -b 4096"
-        echo "  ssh-copy-id $SERVER"
-        echo
-        read -p "Press Enter to continue anyway, or Ctrl+C to exit..."
+        echo "Note: Skipping SSH connection test in non-interactive mode"
+        echo "      Ensure SSH key authentication is set up before running the client"
     fi
     
     # Install files
@@ -219,12 +363,21 @@ EOF
         sudo systemctl daemon-reload
         echo "✓ Systemd service installed"
         
-        echo
-        read -p "Enable and start the service now? [Y/n] " START_NOW
-        if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
+        if [ "$INTERACTIVE" = true ]; then
+            echo
+            read -p "Enable and start the service now? [Y/n] " START_NOW
+            if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
+                sudo systemctl enable diydydns-client@$USER.service
+                sudo systemctl start diydydns-client@$USER.service
+                echo "✓ Service started"
+                echo
+                echo "Check status with: sudo systemctl status diydydns-client@$USER.service"
+            fi
+        else
+            # Non-interactive mode: auto-enable and start
             sudo systemctl enable diydydns-client@$USER.service
             sudo systemctl start diydydns-client@$USER.service
-            echo "✓ Service started"
+            echo "✓ Service enabled and started"
             echo
             echo "Check status with: sudo systemctl status diydydns-client@$USER.service"
         fi
@@ -301,6 +454,9 @@ install_server() {
     echo "=================================================="
     echo
     
+    # Check if already installed
+    check_existing_installation "server"
+    
     # Detect reverse proxies
     PROXIES=($(detect_reverse_proxies))
     
@@ -313,31 +469,49 @@ install_server() {
     
     # Suggest an available port
     DEFAULT_PORT=8080
-    if is_port_in_use "$DEFAULT_PORT"; then
-        # Default port is in use, suggest an alternative
-        SUGGESTED_PORT=$(suggest_available_port)
-        echo "⚠ Port $DEFAULT_PORT is already in use"
-        echo "  Suggested alternative: $SUGGESTED_PORT"
-        read -p "Enter port to listen on [$SUGGESTED_PORT]: " PORT
-        PORT=${PORT:-$SUGGESTED_PORT}
-    else
-        # Default port is available
-        read -p "Enter port to listen on [$DEFAULT_PORT]: " PORT
-        PORT=${PORT:-$DEFAULT_PORT}
-    fi
-    
-    # Warn if chosen port is in use
-    if is_port_in_use "$PORT"; then
-        echo "⚠ Warning: Port $PORT appears to be in use"
-        read -p "Continue anyway? [y/N] " CONTINUE
-        if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
-            echo "Installation cancelled"
-            exit 1
+    if [ "$INTERACTIVE" = true ]; then
+        if is_port_in_use "$DEFAULT_PORT"; then
+            # Default port is in use, suggest an alternative
+            SUGGESTED_PORT=$(suggest_available_port)
+            echo "⚠ Port $DEFAULT_PORT is already in use"
+            echo "  Suggested alternative: $SUGGESTED_PORT"
+            read -p "Enter port to listen on [$SUGGESTED_PORT]: " PORT
+            PORT=${PORT:-$SUGGESTED_PORT}
+        else
+            # Default port is available
+            read -p "Enter port to listen on [$DEFAULT_PORT]: " PORT
+            PORT=${PORT:-$DEFAULT_PORT}
         fi
+        
+        # Warn if chosen port is in use
+        if is_port_in_use "$PORT"; then
+            echo "⚠ Warning: Port $PORT appears to be in use"
+            read -p "Continue anyway? [y/N] " CONTINUE
+            if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
+                echo "Installation cancelled"
+                exit 1
+            fi
+        fi
+        
+        read -p "Enter path for IP file [/var/www/html/myip.txt]: " IP_FILE
+        IP_FILE=${IP_FILE:-/var/www/html/myip.txt}
+    else
+        # Non-interactive mode: use defaults or environment variables
+        PORT="${DIYDYDNS_PORT:-$DEFAULT_PORT}"
+        IP_FILE="${DIYDYDNS_IP_FILE:-/var/www/html/myip.txt}"
+        
+        if is_port_in_use "$PORT"; then
+            SUGGESTED_PORT=$(suggest_available_port)
+            echo "⚠ Port $PORT is already in use"
+            echo "  Using alternative port: $SUGGESTED_PORT"
+            PORT=$SUGGESTED_PORT
+        fi
+        
+        echo "Using configuration:"
+        echo "  Port: $PORT"
+        echo "  IP file: $IP_FILE"
+        echo
     fi
-    
-    read -p "Enter path for IP file [/var/www/html/myip.txt]: " IP_FILE
-    IP_FILE=${IP_FILE:-/var/www/html/myip.txt}
     
     # Create directory with proper permissions
     echo
@@ -380,12 +554,21 @@ EOF
         sudo systemctl daemon-reload
         echo "✓ Systemd service installed"
         
-        echo
-        read -p "Enable and start the service now? [Y/n] " START_NOW
-        if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
+        if [ "$INTERACTIVE" = true ]; then
+            echo
+            read -p "Enable and start the service now? [Y/n] " START_NOW
+            if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
+                sudo systemctl enable diydydns-server.service
+                sudo systemctl start diydydns-server.service
+                echo "✓ Service started"
+                echo
+                echo "Check status with: sudo systemctl status diydydns-server.service"
+            fi
+        else
+            # Non-interactive mode: auto-enable and start
             sudo systemctl enable diydydns-server.service
             sudo systemctl start diydydns-server.service
-            echo "✓ Service started"
+            echo "✓ Service enabled and started"
             echo
             echo "Check status with: sudo systemctl status diydydns-server.service"
         fi
@@ -504,12 +687,19 @@ EOF
 # Main installation flow
 main() {
     check_requirements
+    download_repository
     detect_environment
     
     if [ "$INSTALL_TYPE" = "server" ]; then
         install_server
     else
         install_client
+    fi
+    
+    # Cleanup temporary directory if we downloaded files
+    if [ "${DOWNLOADED_REPO:-false}" = true ]; then
+        cd /
+        rm -rf "$TEMP_DIR"
     fi
     
     echo
