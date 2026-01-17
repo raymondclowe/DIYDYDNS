@@ -259,13 +259,13 @@ is_port_in_use() {
     
     # Check with netstat or ss
     if command -v netstat &> /dev/null; then
-        if netstat -tln 2>/dev/null | grep -qE ":${port}[[:space:]]"; then
+        if netstat -tln 2>/dev/null | grep -qE ":${port}($|[[:space:]])"; then
             return 0
         fi
     fi
     
     if command -v ss &> /dev/null; then
-        if ss -tln 2>/dev/null | grep -qE ":${port}[[:space:]]"; then
+        if ss -tln 2>/dev/null | grep -qE ":${port}($|[[:space:]])"; then
             return 0
         fi
     fi
@@ -276,7 +276,7 @@ is_port_in_use() {
 # Suggest an available port
 suggest_available_port() {
     local default_port=$1
-    local suggested_ports=(8080 8081 8082 3000 3001 5000 5001)
+    local suggested_ports=(8081 8082 3000 3001 5000 5001)
     
     # First check the default port
     if ! is_port_in_use "$default_port"; then
@@ -286,7 +286,7 @@ suggest_available_port() {
     
     # Then try other common ports
     for port in "${suggested_ports[@]}"; do
-        if [ "$port" != "$default_port" ] && ! is_port_in_use "$port"; then
+        if ! is_port_in_use "$port"; then
             echo "$port"
             return 0
         fi
