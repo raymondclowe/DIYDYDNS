@@ -41,24 +41,25 @@ download_repository() {
     TEMP_DIR=$(mktemp -d)
     if ! cd "$TEMP_DIR"; then
         echo "✗ Failed to change to temporary directory"
-        cd /
-        rm -rf "$TEMP_DIR"
+        # Safe cleanup: cd to / and validate before removing
+        cd / 2>/dev/null || true
+        [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
         exit 1
     fi
     
     # Download and extract the repository
     if ! curl -fsSL https://github.com/raymondclowe/DIYDYDNS/archive/main.tar.gz | tar xz; then
         echo "✗ Failed to download repository files"
-        cd /
-        rm -rf "$TEMP_DIR"
+        cd / 2>/dev/null || true
+        [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
         exit 1
     fi
     
     # Move into extracted directory
     if ! cd DIYDYDNS-main; then
         echo "✗ Failed to access extracted repository"
-        cd /
-        rm -rf "$TEMP_DIR"
+        cd / 2>/dev/null || true
+        [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
         exit 1
     fi
     echo "✓ Repository files downloaded"
@@ -714,7 +715,7 @@ main() {
         # Extra safety: verify TEMP_DIR is actually a temp directory
         case "$TEMP_DIR" in
             /tmp/*|/var/tmp/*)
-                cd /
+                cd / 2>/dev/null || true
                 rm -rf "$TEMP_DIR"
                 ;;
             *)
