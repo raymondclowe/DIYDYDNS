@@ -119,32 +119,36 @@ detect_environment() {
         read -p "Is this correct? [Y/n] " CONFIRM
         if [[ ! "$CONFIRM" =~ ^[Nn]$ ]]; then
             INSTALL_TYPE="$AUTO_DETECTED"
-        else
-            AUTO_DETECTED=""
+            echo
+            echo "Installing as: $INSTALL_TYPE"
+            echo
+            return
         fi
     fi
     
-    # Fall back to manual selection if needed
-    if [ -z "$AUTO_DETECTED" ]; then
+    # Manual selection (either no auto-detection or user rejected)
+    if [ -n "$AUTO_DETECTED" ]; then
+        echo "Please choose manually:"
+    else
         echo "Unable to auto-detect environment. Please choose manually:"
-        echo "  (Choose 'server' if this has a static IP or is in a datacenter)"
-        echo "  (Choose 'client' if this is behind a router/NAT at home)"
-        echo
-        read -p "Install as [server/client]? " INSTALL_TYPE
-        
-        case "$INSTALL_TYPE" in
-            server|SERVER|s|S)
-                INSTALL_TYPE="server"
-                ;;
-            client|CLIENT|c|C)
-                INSTALL_TYPE="client"
-                ;;
-            *)
-                echo "Invalid choice. Please run again and choose 'server' or 'client'"
-                exit 1
-                ;;
-        esac
     fi
+    echo "  (Choose 'server' if this has a static IP or is in a datacenter)"
+    echo "  (Choose 'client' if this is behind a router/NAT at home)"
+    echo
+    read -p "Install as [server/client]? " INSTALL_TYPE
+    
+    case "$INSTALL_TYPE" in
+        server|SERVER|s|S)
+            INSTALL_TYPE="server"
+            ;;
+        client|CLIENT|c|C)
+            INSTALL_TYPE="client"
+            ;;
+        *)
+            echo "Invalid choice. Please run again and choose 'server' or 'client'"
+            exit 1
+            ;;
+    esac
     
     echo
     echo "Installing as: $INSTALL_TYPE"
@@ -255,13 +259,13 @@ is_port_in_use() {
     
     # Check with netstat or ss
     if command -v netstat &> /dev/null; then
-        if netstat -tln 2>/dev/null | grep -q ":$port "; then
+        if netstat -tln 2>/dev/null | grep -qE ":${port}[[:space:]]"; then
             return 0
         fi
     fi
     
     if command -v ss &> /dev/null; then
-        if ss -tln 2>/dev/null | grep -q ":$port "; then
+        if ss -tln 2>/dev/null | grep -qE ":${port}[[:space:]]"; then
             return 0
         fi
     fi
@@ -272,10 +276,17 @@ is_port_in_use() {
 # Suggest an available port
 suggest_available_port() {
     local default_port=$1
-    local suggested_ports=("$default_port" 8080 8081 8082 3000 3001 5000 5001)
+    local suggested_ports=(8080 8081 8082 3000 3001 5000 5001)
     
+    # First check the default port
+    if ! is_port_in_use "$default_port"; then
+        echo "$default_port"
+        return 0
+    fi
+    
+    # Then try other common ports
     for port in "${suggested_ports[@]}"; do
-        if ! is_port_in_use "$port"; then
+        if [ "$port" != "$default_port" ] && ! is_port_in_use "$port"; then
             echo "$port"
             return 0
         fi
