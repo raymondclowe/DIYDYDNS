@@ -30,15 +30,18 @@ The script will auto-detect whether you're on a public server or home network an
 **For non-interactive client installation (e.g., in automation scripts):**
 
 ```bash
-# Set required environment variable for client
-DIYDYDNS_SERVER=user@server.com curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
+# Set environment variable with export, then pipe to bash
+# This ensures the variable is available to the script running in the subshell
+export DIYDYDNS_SERVER=user@server.com && curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
 
 # Optional: customize other settings
-DIYDYDNS_SERVER=user@server.com \
-DIYDYDNS_REMOTE_PATH=/var/www/html/myip.txt \
-DIYDYDNS_INTERVAL=300 \
+export DIYDYDNS_SERVER=user@server.com
+export DIYDYDNS_REMOTE_PATH=/var/www/html/myip.txt
+export DIYDYDNS_INTERVAL=300
 curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
 ```
+
+**Note:** When piping to bash, environment variables need to be exported first to be available in the subshell created by the pipe.
 
 **For non-interactive server installation:**
 
@@ -50,6 +53,19 @@ curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.
 DIYDYDNS_PORT=8080 \
 DIYDYDNS_IP_FILE=/var/www/html/myip.txt \
 curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
+```
+
+**Note for Cloud Providers (AWS, GCP, Azure, Oracle Cloud):**
+
+The installer automatically detects cloud instances by checking for cloud metadata services. If you're running on a cloud instance with a private local IP (e.g., 10.x.x.x) but a public IP assigned by the cloud provider, the script will correctly identify it as a server. The detection works for:
+- AWS EC2 instances
+- Google Cloud Compute Engine instances  
+- Azure Virtual Machines
+- Oracle Cloud instances
+
+If the auto-detection fails, you can force server installation in non-interactive mode by setting `DIYDYDNS_FORCE_TYPE`:
+```bash
+DIYDYDNS_FORCE_TYPE=server curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
 ```
 
 **Note:** The installer will detect if components are already installed and skip reinstallation in non-interactive mode.

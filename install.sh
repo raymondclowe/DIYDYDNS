@@ -199,7 +199,27 @@ detect_environment() {
         echo "  Local IP: $LOCAL_IP"
         if is_private_ip "$LOCAL_IP"; then
             echo "  → Local IP is private (behind NAT/router)"
-            AUTO_DETECTED="client"
+            
+            # Check if this is a cloud instance with NAT
+            # Cloud providers (AWS, GCP, Azure, Oracle Cloud) use NAT to map
+            # public IPs to private IPs on instances
+            # If we can reach the internet and the public IP differs from local IP,
+            # this is likely a cloud server
+            if [ "$PUBLIC_IP" != "$LOCAL_IP" ]; then
+                # Check if we can listen on privileged ports (a server characteristic)
+                # or if common cloud metadata services are accessible
+                if curl -s --max-time 2 http://169.254.169.254/latest/meta-data/ &>/dev/null || \
+                   curl -s --max-time 2 -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/ &>/dev/null || \
+                   curl -s --max-time 2 -H "Metadata: true" http://169.254.169.254/metadata/instance?api-version=2021-02-01 &>/dev/null; then
+                    echo "  → Cloud instance detected (AWS/GCP/Azure/Oracle)"
+                    AUTO_DETECTED="server"
+                else
+                    # Could be home network behind NAT or cloud without metadata service
+                    AUTO_DETECTED="client"
+                fi
+            else
+                AUTO_DETECTED="client"
+            fi
         else
             echo "  → Local IP is public (directly connected to internet)"
             AUTO_DETECTED="server"
@@ -209,17 +229,43 @@ detect_environment() {
     if [ -n "$GATEWAY" ]; then
         echo "  Gateway: $GATEWAY"
         if is_private_ip "$GATEWAY"; then
-            echo "  → Gateway is private (typical home/office network)"
-            # Only override to client if not already set to server with public IP
-            # This handles cloud instances (AWS VPC, GCP, Azure) where the machine has
-            # a public IP but uses a private gateway for routing within the VPC
+            echo "  → Gateway is private"
+            # Only override to client if not already detected as server
+            # This preserves cloud instance detection above
             if [ "$AUTO_DETECTED" != "server" ]; then
+                echo "  → Typical home/office network configuration"
                 AUTO_DETECTED="client"
+            else
+                echo "  → Typical cloud instance configuration"
             fi
         fi
     fi
     
     echo
+    
+    # Check if type is forced via environment variable
+    if [ -n "${DIYDYDNS_FORCE_TYPE:-}" ]; then
+        case "${DIYDYDNS_FORCE_TYPE}" in
+            server|SERVER)
+                INSTALL_TYPE="server"
+                echo "Installation type forced to: server (via DIYDYDNS_FORCE_TYPE)"
+                echo
+                return
+                ;;
+            client|CLIENT)
+                INSTALL_TYPE="client"
+                echo "Installation type forced to: client (via DIYDYDNS_FORCE_TYPE)"
+                echo
+                return
+                ;;
+            *)
+                echo "⚠ Warning: Invalid DIYDYDNS_FORCE_TYPE value: ${DIYDYDNS_FORCE_TYPE}"
+                echo "  Valid values are: server, client"
+                echo "  Continuing with auto-detection..."
+                echo
+                ;;
+        esac
+    fi
     
     # If auto-detected, use that with confirmation (or auto-proceed if non-interactive)
     if [ -n "$AUTO_DETECTED" ]; then
