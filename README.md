@@ -27,6 +27,33 @@ cd DIYDYDNS
 
 The script will auto-detect whether you're on a public server or home network and install the appropriate components.
 
+**For non-interactive client installation (e.g., in automation scripts):**
+
+```bash
+# Set required environment variable for client
+DIYDYDNS_SERVER=user@server.com curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
+
+# Optional: customize other settings
+DIYDYDNS_SERVER=user@server.com \
+DIYDYDNS_REMOTE_PATH=/var/www/html/myip.txt \
+DIYDYDNS_INTERVAL=300 \
+curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
+```
+
+**For non-interactive server installation:**
+
+```bash
+# Server installation with defaults
+curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
+
+# Optional: customize port and IP file location
+DIYDYDNS_PORT=8080 \
+DIYDYDNS_IP_FILE=/var/www/html/myip.txt \
+curl -fsSL https://raw.githubusercontent.com/raymondclowe/DIYDYDNS/main/install.sh | bash
+```
+
+**Note:** The installer will detect if components are already installed and skip reinstallation in non-interactive mode.
+
 ## Features
 
 - 🔄 Automatic IP monitoring with configurable intervals
