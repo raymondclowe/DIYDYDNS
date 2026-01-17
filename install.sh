@@ -39,17 +39,27 @@ download_repository() {
     
     # Create temporary directory
     TEMP_DIR=$(mktemp -d)
-    cd "$TEMP_DIR"
+    if ! cd "$TEMP_DIR"; then
+        echo "✗ Failed to change to temporary directory"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
     
     # Download and extract the repository
     if ! curl -fsSL https://github.com/raymondclowe/DIYDYDNS/archive/main.tar.gz | tar xz; then
         echo "✗ Failed to download repository files"
+        cd /
         rm -rf "$TEMP_DIR"
         exit 1
     fi
     
     # Move into extracted directory
-    cd DIYDYDNS-main
+    if ! cd DIYDYDNS-main; then
+        echo "✗ Failed to access extracted repository"
+        cd /
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
     echo "✓ Repository files downloaded"
     
     # Set flag that we downloaded files
@@ -88,7 +98,7 @@ check_existing_installation() {
             echo "  Config: /etc/diydydns/client.conf"
             
             if command -v systemctl &> /dev/null; then
-                if systemctl is-enabled diydydns-client@*.service &>/dev/null 2>&1; then
+                if systemctl is-enabled diydydns-client@*.service &>/dev/null; then
                     echo "  Service: Active"
                 fi
             fi
@@ -112,7 +122,7 @@ check_existing_installation() {
             echo "  Config: /etc/diydydns/server.conf"
             
             if command -v systemctl &> /dev/null; then
-                if systemctl is-enabled diydydns-server.service &>/dev/null 2>&1; then
+                if systemctl is-enabled diydydns-server.service &>/dev/null; then
                     echo "  Service: Active"
                 fi
             fi
@@ -697,7 +707,7 @@ main() {
     fi
     
     # Cleanup temporary directory if we downloaded files
-    if [ "${DOWNLOADED_REPO:-false}" = true ]; then
+    if [ "${DOWNLOADED_REPO:-false}" = true ] && [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
         cd /
         rm -rf "$TEMP_DIR"
     fi
