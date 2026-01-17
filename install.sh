@@ -101,7 +101,11 @@ detect_environment() {
         echo "  Gateway: $GATEWAY"
         if is_private_ip "$GATEWAY"; then
             echo "  → Gateway is private (typical home/office network)"
-            AUTO_DETECTED="client"
+            # Only override to client if not already set to server with public IP
+            # This handles the case where a public cloud instance might have a private gateway
+            if [ "$AUTO_DETECTED" != "server" ]; then
+                AUTO_DETECTED="client"
+            fi
         fi
     fi
     
@@ -273,18 +277,12 @@ is_port_in_use() {
     return 1
 }
 
-# Suggest an available port
+# Suggest an available port (skipping a known unavailable port)
 suggest_available_port() {
-    local default_port=$1
+    local skip_port=$1
     local suggested_ports=(8081 8082 3000 3001 5000 5001)
     
-    # First check the default port
-    if ! is_port_in_use "$default_port"; then
-        echo "$default_port"
-        return 0
-    fi
-    
-    # Then try other common ports
+    # Try common ports (excluding the skip_port if provided)
     for port in "${suggested_ports[@]}"; do
         if ! is_port_in_use "$port"; then
             echo "$port"
@@ -316,12 +314,14 @@ install_server() {
     # Suggest an available port
     DEFAULT_PORT=8080
     if is_port_in_use "$DEFAULT_PORT"; then
+        # Default port is in use, suggest an alternative
         SUGGESTED_PORT=$(suggest_available_port "$DEFAULT_PORT")
         echo "⚠ Port $DEFAULT_PORT is already in use"
         echo "  Suggested alternative: $SUGGESTED_PORT"
         read -p "Enter port to listen on [$SUGGESTED_PORT]: " PORT
         PORT=${PORT:-$SUGGESTED_PORT}
     else
+        # Default port is available
         read -p "Enter port to listen on [$DEFAULT_PORT]: " PORT
         PORT=${PORT:-$DEFAULT_PORT}
     fi
