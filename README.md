@@ -178,9 +178,11 @@ sudo systemctl start diydydns-server.service
 sudo systemctl status diydydns-server.service
 ```
 
-## Alternative: Using with Nginx
+## Alternative: Using with a Reverse Proxy
 
-You can use Nginx to serve the IP file instead of the Python server:
+You can use a reverse proxy (Nginx, Apache, or Caddy) to serve the IP file instead of the Python server:
+
+### Nginx
 
 ```nginx
 server {
@@ -195,7 +197,47 @@ server {
 }
 ```
 
-Then you only need to run the client, and query: `curl http://your-domain.com/ip`
+### Apache
+
+```apache
+<VirtualHost *:80>
+    ServerName your-domain.com
+    
+    Alias /ip /var/www/html/myip.txt
+    
+    <Location /ip>
+        ForceType text/plain
+        Header set Access-Control-Allow-Origin "*"
+    </Location>
+</VirtualHost>
+```
+
+Enable required modules:
+```bash
+sudo a2enmod headers
+sudo systemctl reload apache2
+```
+
+### Caddy
+
+```caddy
+your-domain.com {
+    route /ip {
+        header Access-Control-Allow-Origin *
+        rewrite * /myip.txt
+        file_server {
+            root /var/www/html
+        }
+    }
+}
+```
+
+Reload Caddy:
+```bash
+sudo systemctl reload caddy
+```
+
+With any of these reverse proxies configured, you only need to run the client component, and query: `curl http://your-domain.com/ip`
 
 ## Troubleshooting
 
