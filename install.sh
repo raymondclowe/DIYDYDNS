@@ -98,8 +98,9 @@ check_existing_installation() {
             echo "  Config: /etc/diydydns/client.conf"
             
             if command -v systemctl &> /dev/null; then
+                # Check if service is enabled (not running status, just enabled at boot)
                 if systemctl is-enabled diydydns-client@*.service &>/dev/null; then
-                    echo "  Service: Active"
+                    echo "  Service: Enabled"
                 fi
             fi
             
@@ -122,8 +123,9 @@ check_existing_installation() {
             echo "  Config: /etc/diydydns/server.conf"
             
             if command -v systemctl &> /dev/null; then
+                # Check if service is enabled (not running status, just enabled at boot)
                 if systemctl is-enabled diydydns-server.service &>/dev/null; then
-                    echo "  Service: Active"
+                    echo "  Service: Enabled"
                 fi
             fi
             
@@ -708,8 +710,16 @@ main() {
     
     # Cleanup temporary directory if we downloaded files
     if [ "${DOWNLOADED_REPO:-false}" = true ] && [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
-        cd /
-        rm -rf "$TEMP_DIR"
+        # Extra safety: verify TEMP_DIR is actually a temp directory
+        case "$TEMP_DIR" in
+            /tmp/*|/var/tmp/*)
+                cd /
+                rm -rf "$TEMP_DIR"
+                ;;
+            *)
+                echo "⚠ Warning: Skipping cleanup of unexpected temp directory: $TEMP_DIR"
+                ;;
+        esac
     fi
     
     echo
